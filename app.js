@@ -5,7 +5,7 @@ export function boot(store) {
   const S = { user: null, cfg: null, view: 'inicio', sub: null, draft: null, filtro: 'Todos', busca: '', dia: iso(new Date()), semana: 0, msg: '', ready: {} };
   COLS.forEach(c => S[c] = []);
   const DEF_TAB = [{"m": 30, "n": "Barra de calça", "v": "20"}, {"m": 35, "n": "Barra italiana", "v": "25"}, {"m": 20, "n": "Barra de malha", "v": "15"}, {"m": 30, "n": "Ajuste de blusa", "v": "20"}, {"m": 35, "n": "Ajuste de blusa com manga", "v": "25"}, {"m": 30, "n": "Ajuste de cintura", "v": "15"}, {"m": 30, "n": "Ajuste de pernas", "v": "15"}, {"m": 40, "n": "Ajuste de vestido de festa", "v": "25"}, {"m": 45, "n": "Ajuste de blazer", "v": "30"}, {"m": 25, "n": "Encurtar blusa ou vestido", "v": "15"}, {"m": 40, "n": "Encurtar manga de camisa", "v": "25"}, {"m": 20, "n": "Encurtar manga de malha", "v": "15"}, {"m": 20, "n": "Encurtar alça", "v": "15"}, {"m": 30, "n": "Zíper de calça ou saia", "v": "15"}, {"m": 35, "n": "Zíper de vestido", "v": "20"}, {"m": 40, "n": "Zíper de jaqueta", "v": "20"}, {"m": 5, "n": "Botão ou casa", "v": "2"}, {"m": 15, "n": "Cerzido", "v": "10"}, {"m": 40, "n": "Colarinho", "v": "25"}];
-  const DEF_CFG = { hora: 30, ind: 5, margem: 50, taxa: 0, arred: true, urg: 30, pix: '', cont: '@somniumatelie', tab: DEF_TAB };
+  const DEF_CFG = { hora: 30, ind: 5, margem: 50, taxa: 0, arred: true, urg: 30, pix: '', cont: '@somniumatelie', nota: 1, tab: DEF_TAB };
   const COLECOES = ['Coleção Initium', 'Coleção Quotidie', 'Coleção Funis'];
   const TIPOS = ['Corda', 'Roupa', 'Acessório'];
   const STATUS = ['Aguardando', 'Cortando', 'Em costura', 'Aguardando prova', 'Pronto', 'Entregue'];
@@ -219,7 +219,7 @@ export function boot(store) {
     const d = S.draft; const r = calcPeca(d);
     const mats = (d.mats || []).map((m, i) => '<div class="mat"><div class="mh"><input class="in" data-f="mats.' + i + '.nome" placeholder="Material" value="' + esc(m.nome) + '"><button class="x" data-act="mat-del" data-v="' + i + '" aria-label="Remover material">' + svg('x', 18) + '</button></div><div class="tri"><label>Unidade<input class="in" data-f="mats.' + i + '.un" value="' + esc(m.un) + '" placeholder="m, un, kg"></label><label>Preço por unidade<input class="in" inputmode="decimal" data-f="mats.' + i + '.precoUn" value="' + esc(m.precoUn) + '"></label><label>Usei<input class="in" inputmode="decimal" data-f="mats.' + i + '.uso" value="' + esc(m.uso) + '"></label></div></div>').join('');
     const fotos = '<div class="fotos">' + (d.fotos || []).map((f, i) => '<div class="ft"><img src="' + f + '" alt=""><button class="x" data-act="foto-del" data-v="' + i + '" aria-label="Remover foto">' + svg('x', 16, '#fff', 2) + '</button></div>').join('') + ((d.fotos || []).length < 4 ? '<button class="addf" data-act="foto">' + svg('cam', 24) + 'Foto</button>' : '') + '</div><input type="file" id="arq" accept="image/*" multiple hidden>';
-    return tela(topo('Peças') + '<div class="tit">' + (d.id ? esc(d.nome || 'Peça') : 'Nova peça') + '</div>' + fotos + inp('Nome', 'nome') +
+    return tela(topo('Peças') + '<div class="tit">' + (d.id ? esc(d.nome || 'Peça') : 'Nova peça') + '</div>' + (d.id ? '<div class="duo" style="margin:4px 0 8px"><button class="btn sec" data-act="card-peca">Card da peça</button><button class="btn sec" data-act="nota-peca">Notinha</button></div>' : '') + fotos + inp('Nome', 'nome') +
       '<div class="lb">Coleção</div><div class="chips wrap">' + COLECOES.map(c => chip(c.replace('Coleção ', ''), d.colecao === c, 'set', 'colecao', c)).join('') + '</div>' +
       '<div class="lb">Tipo</div><div class="chips wrap">' + TIPOS.map(c => chip(c, d.tipo === c, 'set', 'tipo', c)).join('') + '</div>' +
       '<div class="rowh"><span class="sec2">Materiais</span><span class="lk"><button data-act="mat-insumo">+ dos insumos</button><button data-act="mat-add">+ novo</button></span></div>' + mats +
@@ -274,12 +274,14 @@ export function boot(store) {
 
   // ---------- ajuste de roupa ----------
   function calcAjuste(a) {
+    if (a.notaPeca) { const q = Math.max(numRaw(a.qtd), 0) || 0, v = num(a.vu) * q, abat = Math.min(Math.max(num(a.abat), 0), v), total = v - abat, custo = numRaw(a.custoUn) * q;
+      return { itens: [{ d: a.nome || 'Peça', q, v, sug: v }], bruto: v, urg: 0, abat, total, custo, mat: 0, mao: 0, ind: 0, horas: 0, lucro: total - custo }; }
     const c = cfg(), taxa = Math.min(num(c.taxa), 60) / 100; let mat = 0, mao = 0, ind = 0, bruto = 0, horas = 0; const itens = [];
     (a.servs || []).forEach(sv => {
       const q = Math.max(numRaw(sv.qtd), 0), hh = numRaw(sv.min) / 60 * q, lm = num(sv.mat) * q, lmao = hh * num(c.hora), lind = lm * num(c.ind) / 100, lc = lm + lmao + lind;
       const sug = lc > 0 ? Math.ceil(lc * (1 + num(c.margem) / 100) / (1 - taxa)) : 0;
       const v = String(sv.vu == null ? '' : sv.vu).trim() !== '' ? num(sv.vu) * q : sug;
-      mat += lm; mao += lmao; ind += lind; horas += hh; bruto += v; itens.push({ d: (sv.nome || 'Serviço') + (String(sv.det || '').trim() ? ' (' + String(sv.det).trim() + ')' : ''), q, v, sug });
+      mat += lm; mao += lmao; ind += lind; horas += hh; bruto += v; itens.push({ d: (sv.nome || 'Serviço') + (String(sv.det || '').trim() ? ' — ' + String(sv.det).trim() : ''), q, v, sug });
     });
     const urg = a.urgente && bruto > 0 ? bruto * num(c.urg) / 100 : 0; const abat = Math.min(Math.max(num(a.abat), 0), bruto + urg); const total = bruto + urg - abat; const custo = mat + mao + ind;
     return { itens, bruto, urg, abat, total, custo, mat, mao, ind, horas, lucro: total - total * taxa - custo };
@@ -289,27 +291,130 @@ export function boot(store) {
     return r.itens.map(i => l(esc(i.d) + (i.q !== 1 ? ' ×' + i.q : ''), money(i.v))).join('') + (r.urg ? l('Taxa de urgência', money(r.urg)) : '') + (r.abat ? l('Desconto', '− ' + money(r.abat)) : '') + '<hr>' + l('Total', money(r.total), true) + l('Seu custo estimado', money(r.custo)) + l('Sobra para você', money(r.lucro));
   }
   function nomeAj(a) { return nomeCliente(a.clienteId) || a.clienteNome || ''; }
+  function dataBR(d) { if (!d) return ''; const p = String(d).split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : d; }
+  function numNota() { return String(Math.max(1, Math.round(num(cfg().nota)) || 1)).padStart(4, '0'); }
+  function linhasNota(a) { const r = calcAjuste(a); const rows = r.itens.map(i => ({ d: i.d, q: i.q, v: i.v })); if (r.urg > 0) rows.push({ d: 'Taxa de urgência', q: '', v: r.urg }); return { r, rows }; }
   function notaTexto(a) {
-    const r = calcAjuste(a), c = cfg(); const L = [];
-    L.push('Somnium Ateliê', (a.tipo || 'Orçamento') + (nomeAj(a) ? ' para ' + nomeAj(a) : ''), '');
-    r.itens.forEach(i => L.push('• ' + i.d + (i.q !== 1 ? ' (' + i.q + 'x)' : '') + ': ' + money(i.v)));
-    if (r.urg) L.push('• Taxa de urgência: ' + money(r.urg)); if (r.abat) L.push('• Desconto: − ' + money(r.abat));
-    L.push('', 'Total: ' + money(r.total)); if (a.prazo) L.push('Prazo: ' + fmtData(a.prazo)); if (a.obs) L.push(a.obs);
-    if (c.pix) L.push('Pix: ' + c.pix); if (c.cont) L.push(c.cont); return L.join('\n');
+    const { r, rows } = linhasNota(a), c = cfg(), rec = a.tipo === 'Recibo', L = [];
+    L.push('*Somnium Ateliê*', '*' + (a.tipo || 'Orçamento') + ' nº ' + numNota() + '* — ' + new Date().toLocaleDateString('pt-BR'));
+    if (nomeAj(a)) L.push('Cliente: ' + nomeAj(a)); if (a.prazo && !rec) L.push('Entrega prevista: ' + dataBR(a.prazo)); L.push('');
+    rows.forEach(i => L.push('• ' + i.d + (i.q !== '' && i.q !== 1 ? ' (' + i.q + 'x)' : '') + ' — ' + money(i.v))); if (r.abat > 0) L.push('• Desconto — -' + money(r.abat));
+    L.push('', '*Total: ' + money(r.total) + '*' + (rec ? ' (pago)' : '')); if (!rec && String(c.pix || '').trim()) L.push('Pix: ' + String(c.pix).trim()); if (String(a.obs || '').trim()) L.push(String(a.obs).trim());
+    L.push(rec ? 'Obrigada pela preferência!' : 'Orçamento válido por 7 dias.'); if (String(c.cont || '').trim()) L.push(String(c.cont).trim()); L.push('', 'Já nos segue nas redes sociais? 💜', 'https://instagram.com/somniumatelie'); return L.join('\n');
   }
-  function notaFoto(a) {
-    const r = calcAjuste(a), c = cfg(), W = 1080, pad = 70, lh = 56; const linhas = r.itens.length + (r.urg ? 1 : 0) + (r.abat ? 1 : 0);
-    const H = 520 + linhas * lh + 260; const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const g = cv.getContext('2d');
-    g.fillStyle = '#FBF8F2'; g.fillRect(0, 0, W, H);
-    const fim = () => {
-      let y = 330; g.fillStyle = '#7A5FA0'; g.font = '600 44px Jost, system-ui, sans-serif'; g.fillText((a.tipo || 'Orçamento') + (nomeAj(a) ? ' · ' + nomeAj(a) : ''), pad, y); y += 70; g.font = '36px Jost, system-ui, sans-serif';
-      const linha = (t, v, b) => { g.fillStyle = '#2F2A35'; g.font = (b ? '600 ' : '') + '36px Jost, system-ui, sans-serif'; g.textAlign = 'left'; g.fillText(t.length > 38 ? t.slice(0, 37) + '…' : t, pad, y); g.textAlign = 'right'; g.fillText(v, W - pad, y); g.textAlign = 'left'; y += lh; };
-      r.itens.forEach(i => linha(i.d + (i.q !== 1 ? ' ×' + i.q : ''), money(i.v))); if (r.urg) linha('Taxa de urgência', money(r.urg)); if (r.abat) linha('Desconto', '− ' + money(r.abat));
-      g.fillStyle = '#E8E0D4'; g.fillRect(pad, y - 20, W - pad * 2, 3); y += 24; linha('Total', money(r.total), true); y += 10;
-      g.fillStyle = '#6D6476'; g.font = '30px Jost, system-ui, sans-serif'; if (a.prazo) { g.fillText('Prazo: ' + fmtData(a.prazo), pad, y); y += 44; } if (c.pix) { g.fillText('Pix: ' + c.pix, pad, y); y += 44; } if (c.cont) g.fillText(c.cont, pad, y);
-      cv.toBlob(b => { const u = URL.createObjectURL(b), el = document.createElement('a'); el.href = u; el.download = 'Notinha_Somnium.png'; document.body.appendChild(el); el.click(); setTimeout(() => { URL.revokeObjectURL(u); el.remove(); }, 800); toast('Foto da notinha salva'); }, 'image/png');
-    };
-    const im = new Image(); im.onload = () => { g.drawImage(im, W / 2 - 110, 60, 220, 220); fim(); }; im.onerror = fim; im.src = 'logo.png';
+  function carregarImg(src) { return new Promise(res => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }); }
+  function quebrar(g, txt, larg) {
+    const ps = String(txt).split(' '), ls = []; let at = '';
+    ps.forEach(p => { const t = at ? at + ' ' + p : p; if (g.measureText(t).width > larg && at) { ls.push(at); at = p; } else at = t; }); if (at) ls.push(at); return ls;
+  }
+  function desenharNota(a) {
+    const fontes = (document.fonts && document.fonts.load) ? Promise.all([document.fonts.load('50px "Kaushan Script"'), document.fonts.load('22px "Jost"'), document.fonts.load('600 22px "Jost"')]).catch(() => { }) : Promise.resolve();
+    return Promise.all([carregarImg('logo.png'), fontes]).then(x => {
+      const logo = x[0], { r, rows } = linhasNota(a), c = cfg(), rec = a.tipo === 'Recibo', W = 720, esc = 2, ALT = 3200;
+      const cv = document.createElement('canvas'); cv.width = W * esc; cv.height = ALT * esc; const g = cv.getContext('2d'); g.scale(esc, esc);
+      const F = '"Jost", "Futura", "Avenir Next", system-ui, sans-serif', SC = '"Kaushan Script", "Brush Script MT", cursive';
+      g.fillStyle = '#fbf8f2'; g.fillRect(0, 0, W, ALT); g.fillStyle = '#c9a66b'; g.fillRect(0, 0, W, 8);
+      const px = 40, L = W - 80, R = px + L; let y = 44;
+      if (logo) { g.save(); g.beginPath(); g.moveTo(px + 16, y); g.arcTo(px + 84, y, px + 84, y + 84, 16); g.arcTo(px + 84, y + 84, px, y + 84, 16); g.arcTo(px, y + 84, px, y, 16); g.arcTo(px, y, px + 84, y, 16); g.closePath(); g.clip(); g.drawImage(logo, px, y, 84, 84); g.restore(); }
+      g.textBaseline = 'alphabetic'; g.fillStyle = '#2f2a35'; g.font = '50px ' + SC; g.fillText('Somnium', px + 104, y + 44); const wS = g.measureText('Somnium').width;
+      g.fillStyle = '#6d6476'; g.font = '15px ' + F; try { g.letterSpacing = '4px'; } catch (e) { } const wA = g.measureText('ATELIÊ').width; g.fillText('ATELIÊ', px + 104 + wS - wA + 2, y + 64); try { g.letterSpacing = '0px'; } catch (e) { }
+      g.font = '20px ' + F; g.fillText((a.tipo || 'Orçamento') + ' nº ' + numNota() + ' · ' + new Date().toLocaleDateString('pt-BR'), px + 104, y + 92); y += 84 + 28;
+      const traco = (yy, cor) => { g.save(); g.setLineDash([6, 5]); g.strokeStyle = cor || '#cfc5b8'; g.lineWidth = 1; g.beginPath(); g.moveTo(px, yy); g.lineTo(R, yy); g.stroke(); g.restore(); };
+      traco(y); y += 30;
+      const par = (k, v) => { if (!v) return; g.fillStyle = '#6d6476'; g.font = '19px ' + F; g.fillText(k, px, y); g.fillStyle = '#2f2a35'; g.font = '21px ' + F; g.fillText(v, px + 130, y); y += 32; };
+      par('Cliente', nomeAj(a).trim()); if (!rec) par('Entrega', dataBR(a.prazo)); if (nomeAj(a).trim() || (!rec && a.prazo)) y += 8;
+      const qx = R - 150, wd = L - 210;
+      g.fillStyle = '#6d6476'; g.font = '15px ' + F; g.fillText('DESCRIÇÃO', px, y); g.textAlign = 'center'; g.fillText('QTD.', qx, y); g.textAlign = 'right'; g.fillText('VALOR', R, y); g.textAlign = 'left';
+      y += 12; g.save(); g.strokeStyle = '#cfc5b8'; g.beginPath(); g.moveTo(px, y); g.lineTo(R, y); g.stroke(); g.restore(); y += 30;
+      const item = (desc, qtd, val) => {
+        g.font = '22px ' + F; g.fillStyle = '#2f2a35'; const ls = quebrar(g, desc, wd), y0 = y;
+        ls.forEach((t, i) => { g.textAlign = 'left'; g.fillText(t, px, y0 + i * 29); }); g.textAlign = 'center'; g.fillText(qtd, qx, y0); g.textAlign = 'right'; g.fillText(val, R, y0); g.textAlign = 'left';
+        y += (ls.length - 1) * 29 + 16; traco(y, '#e0d7ca'); y += 28;
+      };
+      rows.forEach(i => item(i.d, i.q === '' ? '' : String(i.q), money(i.v))); if (r.abat > 0) item('Desconto', '', '-' + money(r.abat));
+      y -= 4; g.save(); g.strokeStyle = '#2f2a35'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, y); g.lineTo(R, y); g.stroke(); g.restore(); y += 40;
+      g.fillStyle = '#2f2a35'; g.font = '600 30px ' + F; g.fillText('Total' + (rec ? ' (pago)' : ''), px, y); g.textAlign = 'right'; g.fillText(money(r.total), R, y); g.textAlign = 'left'; y += 44;
+      const rod = []; if (!rec && String(c.pix || '').trim()) rod.push('Pix: ' + String(c.pix).trim()); if (String(a.obs || '').trim()) rod.push(String(a.obs).trim());
+      rod.push(rec ? 'Obrigada pela preferência!' : 'Orçamento válido por 7 dias.'); if (String(c.cont || '').trim()) rod.push(String(c.cont).trim());
+      g.fillStyle = '#6d6476'; g.font = '19px ' + F; rod.forEach(t => { quebrar(g, t, L).forEach(ln => { g.fillText(ln, px, y); y += 27; }); }); y += 14;
+      g.save(); g.fillStyle = '#f3ead9'; g.strokeStyle = '#c9a66b'; g.lineWidth = 1.2; const bx = px, bw = L, bh = 92, rr = 14; g.beginPath(); g.moveTo(bx + rr, y); g.arcTo(bx + bw, y, bx + bw, y + bh, rr); g.arcTo(bx + bw, y + bh, bx, y + bh, rr); g.arcTo(bx, y + bh, bx, y, rr); g.arcTo(bx, y, bx + bw, y, rr); g.closePath(); g.fill(); g.stroke(); g.restore();
+      g.textAlign = 'center'; g.fillStyle = '#2f2a35'; g.font = '600 21px ' + F; g.fillText('Já nos segue nas redes sociais?', W / 2, y + 38); g.fillStyle = '#7a4fa3'; g.font = '600 22px ' + F; g.fillText('instagram.com/somniumatelie', W / 2, y + 70); g.textAlign = 'left'; y += bh + 36;
+      const out = document.createElement('canvas'); out.width = W * esc; out.height = Math.ceil(y * esc); out.getContext('2d').drawImage(cv, 0, 0, W * esc, y * esc, 0, 0, W * esc, y * esc); return out;
+    });
+  }
+  async function proximaNota() { const c = Object.assign({}, cfg(), { nota: (Math.round(num(cfg().nota)) || 1) + 1 }); S.cfg = c; await store.save('config', 'main', c); }
+  async function notaFoto(a) {
+    toast('Gerando a foto…'); const cv = await desenharNota(a);
+    const blob = await new Promise(ok => cv.toBlob(ok, 'image/png')); if (!blob) return toast('Não consegui gerar a foto');
+    const nome = 'Nota_Somnium_' + numNota() + '.png'; let f = null; try { f = new File([blob], nome, { type: 'image/png' }); } catch (e) { }
+    if (f && navigator.canShare && navigator.canShare({ files: [f] })) {
+      try { await navigator.share({ files: [f], title: (a.tipo || 'Orçamento') + ' — Somnium Ateliê', text: 'Já nos segue nas redes sociais? 💜\nhttps://instagram.com/somniumatelie' }); await proximaNota(); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const u = URL.createObjectURL(blob), el = document.createElement('a'); el.href = u; el.download = nome; document.body.appendChild(el); el.click(); setTimeout(() => { URL.revokeObjectURL(u); el.remove(); }, 800); toast('Foto salva. Envie pelo WhatsApp'); await proximaNota();
+  }
+  function vFormNotaPeca() {
+    const d = S.draft, r = calcAjuste(d);
+    return tela(topo('Peças') + '<div class="tit">Notinha da peça</div><p class="mut sm">' + esc(d.nome) + '</p>' +
+      sel('Cliente', 'clienteId', [['', '— escolher ou digitar abaixo —']].concat(S.clientes.slice().sort((x, y) => x.nome.localeCompare(y.nome)).map(c => [c.id, c.nome]))) + inp('Ou nome sem ficha', 'clienteNome') +
+      '<div class="lb">Documento</div><div class="chips wrap">' + ['Orçamento', 'Recibo'].map(t => chip(t, d.tipo === t, 'set', 'tipo', t)).join('') + '</div>' +
+      '<div class="duo2">' + inp('Quantidade', 'qtd', { mode: 'decimal' }) + inp('Valor de cada (R$)', 'vu', { mode: 'decimal' }) + '</div>' + inp('Desconto (R$)', 'abat', { mode: 'decimal' }) + inp('Prazo de entrega (opcional)', 'prazo', { type: 'date' }) + inp('Observações', 'obs', { area: true }) +
+      '<div class="sec2">Resumo</div><div class="calc" id="calc">' + calcAjHtml(r) + '</div><p class="mut sm">Documento nº ' + numNota() + '. O número avança depois que você compartilha a foto.</p><div class="duo"><button class="btn sec" data-act="aj-copiar">Copiar texto</button><button class="btn sec" data-act="aj-foto">Compartilhar foto</button></div><div class="barra"><button class="btn" data-act="nota-venda">Registrar venda</button></div>');
+  }
+
+  // ---------- card da peça ----------
+  function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function desenharCard(d) {
+    const fontes = (document.fonts && document.fonts.load) ? Promise.all([document.fonts.load('50px "Kaushan Script"'), document.fonts.load('22px "Jost"'), document.fonts.load('600 22px "Jost"')]).catch(() => { }) : Promise.resolve();
+    const foto = (d.fotos || [])[d.fi || 0];
+    return Promise.all([carregarImg('logo.png'), foto ? carregarImg(foto) : Promise.resolve(null), fontes]).then(x => {
+      const logo = x[0], im = x[1], W = 1080, H = 1350, g = (function () { return null; })();
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
+      const F = '"Jost", "Futura", "Avenir Next", system-ui, sans-serif', SC = '"Kaushan Script", "Brush Script MT", cursive';
+      c.fillStyle = '#fbf8f2'; c.fillRect(0, 0, W, H); c.fillStyle = '#c9a66b'; c.fillRect(0, 0, W, 12);
+      const px = 60, pw = W - 120, py = 56, ph = 930;
+      c.save(); rr(c, px, py, pw, ph, 32); c.clip();
+      if (im) { const k = Math.max(pw / im.width, ph / im.height), w = im.width * k, h = im.height * k; c.drawImage(im, px + (pw - w) / 2, py + (ph - h) / 2, w, h); }
+      else { c.fillStyle = '#3a3541'; c.fillRect(px, py, pw, ph); if (logo) c.drawImage(logo, px + pw / 2 - 150, py + ph / 2 - 150, 300, 300); }
+      c.restore();
+      c.save(); rr(c, px, py, pw, ph, 32); c.lineWidth = 2; c.strokeStyle = '#e0d7ca'; c.stroke(); c.restore();
+      const col = String(d.colecao || '').trim();
+      if (col) { c.font = '600 26px ' + F; const tw = c.measureText(col).width + 44; c.save(); c.fillStyle = 'rgba(58,53,65,.88)'; rr(c, px + 28, py + 28, tw, 52, 26); c.fill(); c.restore(); c.fillStyle = '#e9d3a6'; c.textBaseline = 'middle'; c.fillText(col, px + 50, py + 55); }
+      c.textBaseline = 'alphabetic'; let y = py + ph + 76;
+      const mostrar = d.mostrar !== false && d.preco > 0, pv = money(d.preco || 0);
+      c.font = '600 32px ' + F; const wp = mostrar ? Math.max(c.measureText(pv).width + 56, 200) : 0, wn = pw - (mostrar ? wp + 30 : 0);
+      c.fillStyle = '#2f2a35'; c.font = '600 50px ' + F; const nl = quebrar(c, d.nome || 'Peça', wn).slice(0, 2); nl.forEach((t, i) => c.fillText(t, px, y + i * 58));
+      if (mostrar) { const bh = 84, by = y - 52; c.fillStyle = '#3a3541'; rr(c, px + pw - wp, by, wp, bh, 42); c.fill(); c.fillStyle = '#e9d3a6'; c.font = '600 36px ' + F; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(pv, px + pw - wp / 2, by + bh / 2 + 2); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; }
+      y += (nl.length - 1) * 58 + 18;
+      const tx = String(d.texto || '').trim();
+      if (tx) { c.fillStyle = '#6d6476'; c.font = '27px ' + F; quebrar(c, tx, pw).slice(0, 2).forEach((t, i) => c.fillText(t, px, y + 28 + i * 36)); }
+      const fy = H - 74; c.save(); c.setLineDash([6, 5]); c.strokeStyle = '#cfc5b8'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(px, fy - 40); c.lineTo(px + pw, fy - 40); c.stroke(); c.restore();
+      if (logo) { c.save(); rr(c, px, fy - 22, 56, 56, 12); c.clip(); c.drawImage(logo, px, fy - 22, 56, 56); c.restore(); }
+      c.fillStyle = '#2f2a35'; c.font = '38px ' + SC; c.fillText('Somnium', px + 74, fy + 14); const ws = c.measureText('Somnium').width;
+      c.fillStyle = '#6d6476'; c.font = '14px ' + F; try { c.letterSpacing = '3px'; } catch (e) { } c.fillText('ATELIÊ', px + 74 + ws + 12, fy + 14); try { c.letterSpacing = '0px'; } catch (e) { }
+      c.textAlign = 'right'; c.fillStyle = '#7a4fa3'; c.font = '600 28px ' + F; c.fillText('@somniumatelie', px + pw, fy + 12); c.textAlign = 'left';
+      return cv;
+    });
+  }
+  let cardTk = 0;
+  function atualizarCard() {
+    const el = $('#cardprev'); if (!el || !S.draft || S.sub !== 'cardpeca') return; const tk = ++cardTk;
+    desenharCard(S.draft).then(cv => { if (tk !== cardTk) return; const e2 = $('#cardprev'); if (e2) e2.src = cv.toDataURL('image/jpeg', .92); });
+  }
+  async function cardFoto(d) {
+    toast('Gerando o card…'); const cv = await desenharCard(d); const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', .93)); if (!blob) return toast('Não consegui gerar o card');
+    const nome = 'Card_' + String(d.nome || 'peca').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '') + '.jpg'; let f = null; try { f = new File([blob], nome, { type: 'image/jpeg' }); } catch (e) { }
+    const txt = (d.nome || 'Peça') + (d.mostrar !== false && d.preco > 0 ? ' — ' + money(d.preco) : '') + '\nSomnium Ateliê · https://instagram.com/somniumatelie';
+    if (f && navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: d.nome || 'Peça', text: txt }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+    const u = URL.createObjectURL(blob), el = document.createElement('a'); el.href = u; el.download = nome; document.body.appendChild(el); el.click(); setTimeout(() => { URL.revokeObjectURL(u); el.remove(); }, 800); toast('Card salvo. Envie pelo WhatsApp');
+  }
+  function vFormCardPeca() {
+    const d = S.draft, fs = d.fotos || [];
+    return tela(topo('Peças') + '<div class="tit">Card da peça</div><p class="mut sm">Imagem pronta para enviar a quem perguntar sobre a peça.</p>' +
+      '<img id="cardprev" alt="Prévia do card" style="width:100%;border-radius:16px;border:1px solid var(--line,#e0d7ca);display:block;margin:8px 0 12px;background:#fbf8f2;aspect-ratio:4/5">' +
+      (fs.length > 1 ? '<div class="lb">Foto em destaque</div><div class="fotos">' + fs.map((f, i) => '<button type="button" class="ft" data-act="card-foto" data-v="' + i + '" aria-label="Foto ' + (i + 1) + '"><img src="' + f + '" alt="" style="' + ((d.fi || 0) === i ? 'outline:3px solid #c9a66b;outline-offset:2px' : 'opacity:.7') + '"></button>').join('') + '</div>' : '') +
+      '<div class="lb">Valor no card</div><div class="chips wrap">' + chip('Mostrar valor', d.mostrar !== false, 'card-valor', '', '1') + chip('Sem valor', d.mostrar === false, 'card-valor', '', '0') + '</div>' +
+      inp('Texto curto (opcional)', 'texto', { area: true, ph: 'Ex.: Feita à mão em georgette, tamanho único' }) +
+      '<div class="barra"><button class="btn" data-act="card-share">Compartilhar / baixar card</button></div>');
   }
   function vAjustes() {
     const lista = S.ajustes.slice().sort((x, y) => (x.prazo || '9999').localeCompare(y.prazo || '9999'));
@@ -324,7 +429,7 @@ export function boot(store) {
       '<div class="lb">Documento</div><div class="chips wrap">' + ['Orçamento', 'Recibo'].map(t => chip(t, d.tipo === t, 'set', 'tipo', t)).join('') + '</div><div class="lb">Situação</div><div class="chips wrap">' + ['Aguardando', 'Pronto', 'Entregue'].map(t => chip(t, d.status === t, 'set', 'status', t)).join('') + '</div>' +
       '<div class="rowh"><span class="sec2">Serviços</span><span class="lk"><button data-act="aj-add">+ serviço</button></span></div>' + (servs || '<p class="vazio">Toque em “+ serviço” e escolha na tabela.</p>') +
       '<label class="sw"><span><b>Urgente</b><small>soma a taxa de urgência de ' + cfg().urg + '%</small></span><input type="checkbox" data-f="urgente"' + (d.urgente ? ' checked' : '') + '></label>' + inp('Desconto (R$)', 'abat', { mode: 'decimal' }) + inp('Observações', 'obs', { area: true }) +
-      '<div class="sec2">Resumo</div><div class="calc" id="calc">' + calcAjHtml(r) + '</div><div class="duo"><button class="btn sec" data-act="aj-copiar">Copiar texto</button><button class="btn sec" data-act="aj-foto">Salvar foto</button></div>' + barra(d.id ? 'excluir' : '', 'ajustes'));
+      '<div class="sec2">Resumo</div><div class="calc" id="calc">' + calcAjHtml(r) + '</div><p class="mut sm">Documento nº ' + numNota() + '. O número avança depois que você compartilha a foto.</p><div class="duo"><button class="btn sec" data-act="aj-copiar">Copiar texto</button><button class="btn sec" data-act="aj-foto">Compartilhar foto</button></div>' + barra(d.id ? 'excluir' : '', 'ajustes'));
   }
   function escolherServico() {
     const tab = cfg().tab; const m = document.createElement('div'); m.className = 'modal'; m.id = 'modal';
@@ -338,9 +443,10 @@ export function boot(store) {
     if (!S.cfg && !S.ready.cfg) { app.innerHTML = '<div class="login"><p class="sub">Abrindo…</p></div>'; return; }
     let h = '';
     if (S.draft) {
-      const m = { ajustes: vFormAjuste, pedidos: vFormPedido, agenda: vFormAgenda, clientes: vFormCliente, pecas: vFormPeca, insumos: vFormInsumo, vendas: vFormVenda, config: vConfig }; h = m[S.sub]();
+      const m = { notapeca: vFormNotaPeca, cardpeca: vFormCardPeca, ajustes: vFormAjuste, pedidos: vFormPedido, agenda: vFormAgenda, clientes: vFormCliente, pecas: vFormPeca, insumos: vFormInsumo, vendas: vFormVenda, config: vConfig }; h = m[S.sub]();
     } else h = ({ inicio: vInicio, pedidos: vPedidos, agenda: vAgenda, pecas: vPecas, ajustes: vAjustes, mais: vMais, clientes: vClientes, insumos: vInsumos, vendas: vVendas }[S.view] || vInicio)();
     const y = window.scrollY; app.innerHTML = h; if (S.keepScroll) window.scrollTo(0, y);
+    if (S.draft && S.sub === 'cardpeca') atualizarCard();
     const b = $('#busca'); if (b) b.addEventListener('input', e => { S.busca = e.target.value; const pos = e.target.selectionStart; render(); const nb = $('#busca'); nb.focus(); try { nb.setSelectionRange(pos, pos); } catch (x) { } });
   }
   function rerender(keep) { S.keepScroll = !!keep; render(); S.keepScroll = false; }
@@ -366,6 +472,8 @@ export function boot(store) {
     const v = el.type === 'checkbox' ? el.checked : el.value; const path = el.dataset.f;
     if (!S.draft || !path) return; setP(S.draft, path, v);
     if (S.sub === 'pecas') { const c = $('#calc'); if (c) c.innerHTML = calcHtml(calcPeca(S.draft), S.draft); }
+    if (S.sub === 'cardpeca') { clearTimeout(S.cardT); S.cardT = setTimeout(atualizarCard, 350); }
+    if (S.sub === 'notapeca') { const c = $('#calc'); if (c) c.innerHTML = calcAjHtml(calcAjuste(S.draft)); }
     if (S.sub === 'ajustes') { const c = $('#calc'); if (c) c.innerHTML = calcAjHtml(calcAjuste(S.draft)); }
     if (S.sub === 'insumos') { const p = $('#pu'); if (p) p.textContent = 'Preço por unidade: ' + money(numRaw(S.draft.qtd) > 0 ? numRaw(S.draft.preco) / numRaw(S.draft.qtd) : 0); }
   }
@@ -411,7 +519,7 @@ export function boot(store) {
       for (const c of (j.compras || [])) { const q = numRaw(c.qtd) || 1; await salvar('insumos', { id: 'imp-' + c.id, nome: c.material, fornecedor: c.fornecedor || '', categoria: c.categoria || '', data: c.data || '', qtd: q, un: c.un || '', preco: numRaw(c.preco) * 1, precoUn: numRaw(c.preco) / q, criado: c.criado || Date.now() }); n++; }
       for (const a of (j.ajustes_salvos || [])) { const dd = a.dados || {}, aj = dd.aj || {}, nt = dd.nota || {}; await salvar('ajustes', { id: 'imp-' + (dd.id || n), clienteId: '', clienteNome: nt.cliente || '', prazo: nt.prazo || '', tipo: nt.tipo || 'Orçamento', status: 'Aguardando', urgente: !!aj.urgente, abat: nt.abat || '', obs: nt.obs || '', servs: (aj.servs || []).map(x => ({ nome: x.nome, det: x.det || '', min: String(x.min || ''), qtd: String(x.qtd || '1'), vu: String(x.valor || ''), mat: String(x.mat || '') })), criado: a.criado || Date.now() }); n++; }
       for (const v of (j.vendas || [])) { await salvar('vendas', { id: 'imp-' + v.id, descricao: v.descricao || v.nome || 'Venda', data: v.data || '', valor: v.valor || v.total || 0, custo: v.custo || '', criado: v.criado || Date.now() }); n++; }
-      const k = j.configuracoes; if (k) { const c = { hora: num(k.hora), ind: num(k.ind), margem: num(k.margem), taxa: num(k.taxa), arred: !!k.arred, urg: num(k.urg), pix: k.pix || '', cont: k.cont || '@somniumatelie', tab: (k.tab || []).map(t => ({ n: t.n, m: t.m, v: t.v })) }; await store.save('config', 'main', c); S.cfg = c; }
+      const k = j.configuracoes; if (k) { const c = { hora: num(k.hora), ind: num(k.ind), margem: num(k.margem), taxa: num(k.taxa), arred: !!k.arred, urg: num(k.urg), pix: k.pix || '', cont: k.cont || '@somniumatelie', nota: Math.round(num(k.nota)) || 1, tab: (k.tab || []).map(t => ({ n: t.n, m: t.m, v: t.v })) }; await store.save('config', 'main', c); S.cfg = c; }
     } else {
       for (const col of COLS) for (const o of (j[col] || [])) { await salvar(col, o); n++; }
       if (j.configuracoes) { await store.save('config', 'main', j.configuracoes); S.cfg = j.configuracoes; }
@@ -456,13 +564,19 @@ export function boot(store) {
       restaurar: () => { const f = $('#arqbk'); if (f) f.click(); },
       'ins-pick': () => { const i = S.insumos.find(x => x.id === v); if (i) { lerTudo(); S.draft.mats.push({ nome: i.nome, un: i.un || '', precoUn: String(Math.round(i.precoUn * 10000) / 10000).replace('.', ','), uso: '' }); } fecharModal(); rerender(true); },
       'modal-x': () => fecharModal(),
+      'nota-peca': () => { lerTudo(); const d = S.draft, r = calcPeca(d), pr = String(d.preco).trim() === '' ? r.sug : numRaw(d.preco); abrir('notapeca', { notaPeca: true, pecaId: d.id, nome: d.nome, clienteId: '', clienteNome: '', tipo: 'Recibo', qtd: '1', vu: String(pr).replace('.', ','), abat: '', prazo: '', obs: '', custoUn: Math.round(r.custo * 100) / 100 }); },
+      'nota-venda': () => guard(async () => { lerTudo(); const d = S.draft, c = calcAjuste(d); if (!(c.total > 0)) return toast('Informe o valor'); if (!confirm('Registrar venda de ' + money(c.total) + '?')) return; await salvar('vendas', { descricao: d.nome + (numRaw(d.qtd) > 1 ? ' (' + d.qtd + 'x)' : ''), clienteId: d.clienteId || '', data: iso(new Date()), valor: c.total, custo: Math.round(c.custo * 100) / 100, pecaId: d.pecaId || '' }); toast('Venda registrada'); fechar(); })(),
       'tab-add': () => { lerTudo(); (S.draft.tab = S.draft.tab || []).push({ n: '', m: '', v: '' }); rerender(true); },
       'tab-del': () => { lerTudo(); S.draft.tab.splice(+v, 1); rerender(true); },
       'aj-add': () => escolherServico(),
       'aj-pick': () => { const t = cfg().tab[+v]; lerTudo(); S.draft.servs.push(t ? { nome: t.n, det: '', min: String(t.m), qtd: '1', vu: String(t.v), mat: '' } : { nome: '', det: '', min: '', qtd: '1', vu: '', mat: '' }); fecharModal(); rerender(true); },
       'aj-del': () => { lerTudo(); S.draft.servs.splice(+v, 1); rerender(true); },
       'aj-copiar': () => { lerTudo(); const t = notaTexto(S.draft); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Texto copiado'), () => toast('Não consegui copiar')); },
-      'aj-foto': () => { lerTudo(); notaFoto(S.draft); },
+      'card-peca': () => { lerTudo(); const d = S.draft, r = calcPeca(d), pr = String(d.preco).trim() === '' ? r.sug : numRaw(d.preco); abrir('cardpeca', { pecaId: d.id, nome: d.nome, colecao: d.colecao, texto: d.texto || '', fotos: (d.fotos || []).slice(), fi: 0, preco: pr, mostrar: true }); },
+      'card-foto': () => { S.draft.fi = +v; rerender(true); },
+      'card-valor': () => { lerTudo(); S.draft.mostrar = v === '1'; rerender(true); },
+      'card-share': () => { lerTudo(); guard(cardFoto)(S.draft); },
+      'aj-foto': () => { lerTudo(); guard(notaFoto)(S.draft); },
       'toggle': () => { lerTudo(); setP(S.draft, b.dataset.f, !getP(S.draft, b.dataset.f)); rerender(true); }
     };
     if (a.indexOf('novo-') === 0) { const p = a.slice(5).split('-'); const col = p[0]; const extra = p[1] === 'hora' ? { hora: v } : null; if (col === 'agenda' && extra) { abrir('agenda', novoRascunho('agenda', extra)); } else abrir(col, novoRascunho(col)); return; }
@@ -497,5 +611,5 @@ export function boot(store) {
     render();
   });
   render();
-  return { S, calcPeca, avisosPreco, importar, render };
+  return { S, calcPeca, avisosPreco, importar, render, desenharNota, desenharCard, calcAjuste };
 }
