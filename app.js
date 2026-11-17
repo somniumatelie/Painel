@@ -100,9 +100,9 @@ export function boot(store) {
   // ---------- gravação ----------
   async function salvar(col, obj) {
     const o = clone(obj); const id = o.id || store.newId(col); delete o.id; if (!o.criado) o.criado = Date.now(); o.atualizado = Date.now();
-    await store.save(col, id, o); return id;
+    const p = store.save(col, id, o); p.catch(() => toast('Não consegui salvar. Confira a internet.')); await Promise.race([p, new Promise(r => setTimeout(r, 600))]); return id;
   }
-  function toast(t) { S.msg = t; const el = $('#toast'); if (el) { el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2600); } }
+  function toast(t) { S.msg = t; S.toastTxt = t; S.toastAte = Date.now() + 2600; const el = $('#toast'); if (el) { el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2600); } }
   function guard(fn) { return async function () { try { await fn.apply(null, arguments); } catch (e) { toast('Não consegui salvar. Confira a internet e tente de novo.'); console.error(e); } }; }
 
   // ---------- peças de tela ----------
@@ -135,9 +135,16 @@ export function boot(store) {
     const hoje = new Date(); const dt = DIAS_LONGO[hoje.getDay()].toLowerCase() + (hoje.getDay() > 0 && hoje.getDay() < 6 ? '-feira' : '') + ', ' + hoje.getDate() + ' de ' + MESES[hoje.getMonth()];
     const av = avisosPreco().length;
     const t = (v, n, s) => '<button class="tile" data-act="ir" data-v="' + v + '"><span class="ic">' + svg(v, 20, '#7A5FA0') + '</span><span class="tt"><b>' + n + '</b><small>' + s + '</small></span></button>';
+    const hj = iso(hoje), ag = S.agenda.filter(x => x.data === hj).sort((x, y) => (x.hora || '').localeCompare(y.hora || '')).slice(0, 4);
+    const ent = S.pedidos.filter(p => p.status !== 'Entregue').map(p => ({ k: 'pedidos:' + p.id, t: p.titulo || 'Pedido', c: nomeCliente(p.clienteId) || p.clienteNome || '', d: p.prazo || '' }))
+      .concat(S.ajustes.filter(x => x.status !== 'Entregue').map(x => ({ k: 'ajustes:' + x.id, t: 'Ajuste de roupa', c: nomeAj(x) || '', d: x.prazo || '' })))
+      .sort((x, y) => (x.d || '9999').localeCompare(y.d || '9999')).slice(0, 3);
+    const lin = (k, t, m) => '<button class="card" data-act="editar" data-v="' + k + '"><div class="l1"><b>' + esc(t) + '</b><span class="mut">' + esc(m) + '</span></div></button>';
     return tela('<img class="marca" src="marca.png" alt="" aria-hidden="true"><div class="hd rel"><span class="sub">' + esc(dt) + '</span><span class="tit big">Olá, Keila</span></div><div class="frase rel">De rascunhos no caderno à linha na agulha</div>' +
-      '<div class="grid rel">' + t('pedidos', 'Pedidos', 'Prazos e situação') + t('agenda', 'Agenda', 'Provas e entregas') + t('clientes', 'Clientes', 'Medidas e fichas') + t('pecas', 'Peças', 'Coleções e preços') + t('ajustes', 'Ajustes', 'Barras e consertos') + t('insumos', 'Insumos', 'Compras e preços') + t('vendas', 'Vendas', 'Números do mês') + t('config', 'Ajustes do app', 'Hora, margem, backup') + '</div>' +
-      (av ? '<button class="aviso rel" data-act="ir" data-v="insumos">' + svg('alerta', 18, '#8C6B2E') + '<span>' + av + (av > 1 ? ' preços desatualizados' : ' preço desatualizado') + '</span></button>' : ''));
+      '<div class="sec2 rel">Hoje na agenda</div><div class="lista rel">' + (ag.length ? ag.map(x => lin('agenda:' + x.id, x.titulo, x.hora ? x.hora.slice(0, 5) : '')).join('') : '<p class="vazio">Nada marcado para hoje.</p>') + '</div>' +
+      '<div class="sec2 rel">Próximas entregas</div><div class="lista rel">' + (ent.length ? ent.map(x => lin(x.k, x.t + (x.c ? ' · ' + x.c : ''), x.d ? fmtData(x.d) : 'sem prazo')).join('') : '<p class="vazio">Nenhuma entrega pendente.</p>') + '</div>' +
+      (av ? '<button class="aviso rel" data-act="ir" data-v="insumos">' + svg('alerta', 18, '#8C6B2E') + '<span>' + av + (av > 1 ? ' preços desatualizados' : ' preço desatualizado') + '</span></button>' : '') +
+      '<div class="sec2 rel">Atalhos</div><div class="grid rel">' + t('clientes', 'Clientes', 'Medidas e fichas') + t('ajustes', 'Ajustes', 'Barras e consertos') + t('insumos', 'Insumos', 'Compras e preços') + t('vendas', 'Vendas', 'Números do mês') + '</div>');
   }
   function vPedidos() {
     const lista = S.pedidos.filter(p => S.filtro === 'Todos' || (S.filtro === 'Andamento' && p.status !== 'Entregue') || (S.filtro === 'Entregar' && (p.status === 'Pronto' || p.status === 'Aguardando prova')) || (S.filtro === 'Entregues' && p.status === 'Entregue'))
@@ -365,40 +372,84 @@ export function boot(store) {
   function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
   function desenharCard(d) {
     const fontes = (document.fonts && document.fonts.load) ? Promise.all([document.fonts.load('50px "Kaushan Script"'), document.fonts.load('22px "Jost"'), document.fonts.load('600 22px "Jost"')]).catch(() => { }) : Promise.resolve();
-    const foto = (d.fotos || [])[d.fi || 0];
-    return Promise.all([carregarImg('logo.png'), foto ? carregarImg(foto) : Promise.resolve(null), fontes]).then(x => {
-      const logo = x[0], im = x[1], W = 1080, H = 1350, g = (function () { return null; })();
-      const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
+    const idx = (Array.isArray(d.usar) ? d.usar : (d.fotos || []).map((f, i) => i)).filter(i => (d.fotos || [])[i]).slice(0, 4);
+    return Promise.all([carregarImg('logo.png'), Promise.all(idx.map(i => carregarImg(d.fotos[i]))), fontes]).then(x => {
+      const logo = x[0], ims = x[1].filter(Boolean), W = 1080, TH = 5200;
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = TH; const c = cv.getContext('2d');
       const F = '"Jost", "Futura", "Avenir Next", system-ui, sans-serif', SC = '"Kaushan Script", "Brush Script MT", cursive';
-      c.fillStyle = '#fbf8f2'; c.fillRect(0, 0, W, H); c.fillStyle = '#c9a66b'; c.fillRect(0, 0, W, 12);
-      const px = 60, pw = W - 120, py = 56, ph = 930;
-      c.save(); rr(c, px, py, pw, ph, 32); c.clip();
-      if (im) { const k = Math.max(pw / im.width, ph / im.height), w = im.width * k, h = im.height * k; c.drawImage(im, px + (pw - w) / 2, py + (ph - h) / 2, w, h); }
-      else { c.fillStyle = '#3a3541'; c.fillRect(px, py, pw, ph); if (logo) c.drawImage(logo, px + pw / 2 - 150, py + ph / 2 - 150, 300, 300); }
-      c.restore();
-      c.save(); rr(c, px, py, pw, ph, 32); c.lineWidth = 2; c.strokeStyle = '#e0d7ca'; c.stroke(); c.restore();
+      c.fillStyle = '#fbf8f2'; c.fillRect(0, 0, W, TH); c.fillStyle = '#c9a66b'; c.fillRect(0, 0, W, 12);
+      const px = 60, pw = W - 120, gap = 16, cl = (v, a, b) => Math.max(a, Math.min(b, v));
+      const tile = (im, x0, y0, w, h) => {
+        c.save(); rr(c, x0, y0, w, h, 28); c.clip(); c.fillStyle = '#f1ebe0'; c.fillRect(x0, y0, w, h);
+        if (im) { const k = Math.min(w / im.width, h / im.height), iw = im.width * k, ih = im.height * k; c.drawImage(im, x0 + (w - iw) / 2, y0 + (h - ih) / 2, iw, ih); }
+        else if (logo) c.drawImage(logo, x0 + w / 2 - 130, y0 + h / 2 - 130, 260, 260);
+        c.restore(); c.save(); rr(c, x0, y0, w, h, 28); c.lineWidth = 2; c.strokeStyle = '#e0d7ca'; c.stroke(); c.restore();
+      };
+      let y = 56; const asp = im => im.height / im.width;
+      if (ims.length <= 1) { const h = ims[0] ? cl(pw * asp(ims[0]), 600, 1200) : 640; tile(ims[0], px, y, pw, h); y += h; }
+      else if (ims.length === 2) { const w = (pw - gap) / 2, h = cl(w * Math.max(asp(ims[0]), asp(ims[1])), 440, 800); tile(ims[0], px, y, w, h); tile(ims[1], px + w + gap, y, w, h); y += h; }
+      else { const h = cl(pw * asp(ims[0]), 560, 1000); tile(ims[0], px, y, pw, h); y += h + gap; const r = ims.slice(1), n = r.length, w = (pw - gap * (n - 1)) / n, h2 = cl(w * Math.max.apply(null, r.map(asp)), w * .9, w * 1.4); r.forEach((im, i) => tile(im, px + i * (w + gap), y, w, h2)); y += h2; }
       const col = String(d.colecao || '').trim();
-      if (col) { c.font = '600 26px ' + F; const tw = c.measureText(col).width + 44; c.save(); c.fillStyle = 'rgba(58,53,65,.88)'; rr(c, px + 28, py + 28, tw, 52, 26); c.fill(); c.restore(); c.fillStyle = '#e9d3a6'; c.textBaseline = 'middle'; c.fillText(col, px + 50, py + 55); }
-      c.textBaseline = 'alphabetic'; let y = py + ph + 76;
-      const mostrar = d.mostrar !== false && d.preco > 0, pv = money(d.preco || 0);
-      c.font = '600 32px ' + F; const wp = mostrar ? Math.max(c.measureText(pv).width + 56, 200) : 0, wn = pw - (mostrar ? wp + 30 : 0);
-      c.fillStyle = '#2f2a35'; c.font = '600 50px ' + F; const nl = quebrar(c, d.nome || 'Peça', wn).slice(0, 2); nl.forEach((t, i) => c.fillText(t, px, y + i * 58));
-      if (mostrar) { const bh = 84, by = y - 52; c.fillStyle = '#3a3541'; rr(c, px + pw - wp, by, wp, bh, 42); c.fill(); c.fillStyle = '#e9d3a6'; c.font = '600 36px ' + F; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(pv, px + pw - wp / 2, by + bh / 2 + 2); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; }
-      y += (nl.length - 1) * 58 + 18;
+      if (col) { c.font = '600 26px ' + F; const tw = c.measureText(col).width + 44; c.save(); c.fillStyle = 'rgba(58,53,65,.88)'; rr(c, px + 24, 56 + 24, tw, 52, 26); c.fill(); c.restore(); c.fillStyle = '#e9d3a6'; c.textBaseline = 'middle'; c.fillText(col, px + 46, 56 + 51); c.textBaseline = 'alphabetic'; }
+      y += 74; c.fillStyle = '#2f2a35'; c.font = '600 52px ' + F;
+      quebrar(c, d.nome || 'Peça', pw).forEach(t => { c.fillText(t, px, y); y += 60; });
+      y -= 60;
+      if (d.mostrar !== false && d.preco > 0) {
+        const pv = money(d.preco); c.font = '600 40px ' + F; const wp = c.measureText(pv).width + 64, bh = 78, by = y + 26;
+        c.fillStyle = '#3a3541'; rr(c, px, by, wp, bh, 39); c.fill(); c.fillStyle = '#e9d3a6'; c.textBaseline = 'middle'; c.fillText(pv, px + 32, by + bh / 2 + 2); c.textBaseline = 'alphabetic'; y = by + bh;
+      }
       const tx = String(d.texto || '').trim();
-      if (tx) { c.fillStyle = '#6d6476'; c.font = '27px ' + F; quebrar(c, tx, pw).slice(0, 2).forEach((t, i) => c.fillText(t, px, y + 28 + i * 36)); }
-      const fy = H - 74; c.save(); c.setLineDash([6, 5]); c.strokeStyle = '#cfc5b8'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(px, fy - 40); c.lineTo(px + pw, fy - 40); c.stroke(); c.restore();
-      if (logo) { c.save(); rr(c, px, fy - 22, 56, 56, 12); c.clip(); c.drawImage(logo, px, fy - 22, 56, 56); c.restore(); }
-      c.fillStyle = '#2f2a35'; c.font = '38px ' + SC; c.fillText('Somnium', px + 74, fy + 14); const ws = c.measureText('Somnium').width;
-      c.fillStyle = '#6d6476'; c.font = '14px ' + F; try { c.letterSpacing = '3px'; } catch (e) { } c.fillText('ATELIÊ', px + 74 + ws + 12, fy + 14); try { c.letterSpacing = '0px'; } catch (e) { }
-      c.textAlign = 'right'; c.fillStyle = '#7a4fa3'; c.font = '600 28px ' + F; c.fillText('@somniumatelie', px + pw, fy + 12); c.textAlign = 'left';
-      return cv;
+      if (tx) { y += 20; c.fillStyle = '#5b5263'; c.font = '29px ' + F; tx.split(/\n/).forEach(p => { if (!p.trim()) { y += 18; return; } quebrar(c, p, pw).forEach(t => { y += 40; c.fillText(t, px, y); }); }); y += 10; }
+      y += 48; c.save(); c.setLineDash([6, 5]); c.strokeStyle = '#cfc5b8'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(px, y); c.lineTo(px + pw, y); c.stroke(); c.restore(); y += 62;
+      if (logo) { c.save(); rr(c, px, y - 34, 56, 56, 12); c.clip(); c.drawImage(logo, px, y - 34, 56, 56); c.restore(); }
+      c.fillStyle = '#2f2a35'; c.font = '38px ' + SC; c.fillText('Somnium', px + 74, y + 4); const ws = c.measureText('Somnium').width;
+      c.fillStyle = '#6d6476'; c.font = '14px ' + F; try { c.letterSpacing = '3px'; } catch (e) { } c.fillText('ATELIÊ', px + 74 + ws + 12, y + 4); try { c.letterSpacing = '0px'; } catch (e) { }
+      c.textAlign = 'right'; c.fillStyle = '#7a4fa3'; c.font = '600 28px ' + F; c.fillText('@somniumatelie', px + pw, y + 2); c.textAlign = 'left'; y += 56;
+      const out = document.createElement('canvas'); out.width = W; out.height = Math.ceil(y); out.getContext('2d').drawImage(cv, 0, 0, W, y, 0, 0, W, y); return out;
     });
+  }
+  function desenharTabela() {
+    const fontes = (document.fonts && document.fonts.load) ? Promise.all([document.fonts.load('50px "Kaushan Script"'), document.fonts.load('22px "Jost"'), document.fonts.load('600 22px "Jost"')]).catch(() => { }) : Promise.resolve();
+    return Promise.all([carregarImg('logo.png'), fontes]).then(x => {
+      const logo = x[0], c0 = cfg(), tab = (c0.tab || []).filter(t => String(t.n || '').trim()), W = 720, esc = 2, ALT = 4200;
+      const cv = document.createElement('canvas'); cv.width = W * esc; cv.height = ALT * esc; const g = cv.getContext('2d'); g.scale(esc, esc);
+      const F = '"Jost", "Futura", "Avenir Next", system-ui, sans-serif', SC = '"Kaushan Script", "Brush Script MT", cursive';
+      g.fillStyle = '#fbf8f2'; g.fillRect(0, 0, W, ALT); g.fillStyle = '#c9a66b'; g.fillRect(0, 0, W, 8);
+      const px = 40, L = W - 80, R = px + L; let y = 44;
+      if (logo) { g.save(); rr(g, px, y, 84, 84, 16); g.clip(); g.drawImage(logo, px, y, 84, 84); g.restore(); }
+      g.textBaseline = 'alphabetic'; g.fillStyle = '#2f2a35'; g.font = '50px ' + SC; g.fillText('Somnium', px + 104, y + 44); const wS = g.measureText('Somnium').width;
+      g.fillStyle = '#6d6476'; g.font = '15px ' + F; try { g.letterSpacing = '4px'; } catch (e) { } const wA = g.measureText('ATELIÊ').width; g.fillText('ATELIÊ', px + 104 + wS - wA + 2, y + 64); try { g.letterSpacing = '0px'; } catch (e) { }
+      g.font = '20px ' + F; g.fillText('Tabela de ajustes de roupa', px + 104, y + 92); y += 84 + 28;
+      const traco = (yy, cor) => { g.save(); g.setLineDash([6, 5]); g.strokeStyle = cor || '#cfc5b8'; g.lineWidth = 1; g.beginPath(); g.moveTo(px, yy); g.lineTo(R, yy); g.stroke(); g.restore(); };
+      traco(y); y += 30;
+      g.fillStyle = '#6d6476'; g.font = '15px ' + F; g.fillText('AJUSTE', px, y); g.textAlign = 'right'; g.fillText('VALOR', R, y); g.textAlign = 'left';
+      y += 12; g.save(); g.strokeStyle = '#cfc5b8'; g.beginPath(); g.moveTo(px, y); g.lineTo(R, y); g.stroke(); g.restore(); y += 32;
+      tab.forEach(t => {
+        g.font = '22px ' + F; g.fillStyle = '#2f2a35'; const v = money(num(t.v)), wv = g.measureText(v).width, ls = quebrar(g, t.n, L - wv - 30);
+        ls.forEach((l, i) => g.fillText(l, px, y + i * 29)); g.textAlign = 'right'; g.fillText(v, R, y); g.textAlign = 'left';
+        y += (ls.length - 1) * 29 + 16; traco(y, '#e0d7ca'); y += 31;
+      });
+      y -= 6; g.save(); g.strokeStyle = '#2f2a35'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(px, y); g.lineTo(R, y); g.stroke(); g.restore(); y += 40;
+      g.fillStyle = '#6d6476'; g.font = '19px ' + F; g.fillText('Peças que não estão na tabela: solicite um orçamento.', px, y); y += 27; if (String(c0.cont || '').trim()) { g.fillText(String(c0.cont).trim(), px, y); y += 27; } y += 14;
+      g.save(); g.fillStyle = '#f3ead9'; g.strokeStyle = '#c9a66b'; g.lineWidth = 1.2; rr(g, px, y, L, 92, 14); g.fill(); g.stroke(); g.restore();
+      g.textAlign = 'center'; g.fillStyle = '#2f2a35'; g.font = '600 21px ' + F; g.fillText('Já nos segue nas redes sociais?', W / 2, y + 38); g.fillStyle = '#7a4fa3'; g.font = '600 22px ' + F; g.fillText('instagram.com/somniumatelie', W / 2, y + 70); g.textAlign = 'left'; y += 92 + 36;
+      const out = document.createElement('canvas'); out.width = W * esc; out.height = Math.ceil(y * esc); out.getContext('2d').drawImage(cv, 0, 0, W * esc, y * esc, 0, 0, W * esc, y * esc); return out;
+    });
+  }
+  async function tabelaFoto() {
+    toast('Gerando a tabela…'); const cv = await desenharTabela(); const blob = await new Promise(ok => cv.toBlob(ok, 'image/png')); if (!blob) return toast('Não consegui gerar a tabela');
+    const nome = 'Tabela_Ajustes_Somnium.png'; let f = null; try { f = new File([blob], nome, { type: 'image/png' }); } catch (e) { }
+    if (f && navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: 'Tabela de ajustes — Somnium Ateliê', text: 'Já nos segue nas redes sociais? 💜\nhttps://instagram.com/somniumatelie' }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+    const u = URL.createObjectURL(blob), el = document.createElement('a'); el.href = u; el.download = nome; document.body.appendChild(el); el.click(); setTimeout(() => { URL.revokeObjectURL(u); el.remove(); }, 800); toast('Tabela salva. Envie pelo WhatsApp');
+  }
+  function vFormTabela() {
+    return tela(topo('Ajustes', 'ajustes') + '<div class="tit">Tabela de valores</div><p class="mut sm">Card com os ajustes e valores da sua tabela. Para mudar itens ou preços: Mais → Ajustes do app → Tabela de valores dos ajustes.</p>' +
+      '<img id="cardprev" alt="Prévia da tabela" style="width:100%;border-radius:16px;border:1px solid #e0d7ca;display:block;margin:8px 0 12px;background:#fbf8f2;min-height:200px"><div class="barra"><button class="btn" data-act="tabela-share">Compartilhar / baixar tabela</button></div>');
   }
   let cardTk = 0;
   function atualizarCard() {
-    const el = $('#cardprev'); if (!el || !S.draft || S.sub !== 'cardpeca') return; const tk = ++cardTk;
-    desenharCard(S.draft).then(cv => { if (tk !== cardTk) return; const e2 = $('#cardprev'); if (e2) e2.src = cv.toDataURL('image/jpeg', .92); });
+    const el = $('#cardprev'); if (!el || !S.draft || (S.sub !== 'cardpeca' && S.sub !== 'tabcard')) return; const tk = ++cardTk;
+    (S.sub === 'tabcard' ? desenharTabela() : desenharCard(S.draft)).then(cv => { if (tk !== cardTk) return; const e2 = $('#cardprev'); if (e2) e2.src = cv.toDataURL('image/jpeg', .92); });
   }
   async function cardFoto(d) {
     toast('Gerando o card…'); const cv = await desenharCard(d); const blob = await new Promise(ok => cv.toBlob(ok, 'image/jpeg', .93)); if (!blob) return toast('Não consegui gerar o card');
@@ -410,16 +461,16 @@ export function boot(store) {
   function vFormCardPeca() {
     const d = S.draft, fs = d.fotos || [];
     return tela(topo('Peças') + '<div class="tit">Card da peça</div><p class="mut sm">Imagem pronta para enviar a quem perguntar sobre a peça.</p>' +
-      '<img id="cardprev" alt="Prévia do card" style="width:100%;border-radius:16px;border:1px solid var(--line,#e0d7ca);display:block;margin:8px 0 12px;background:#fbf8f2;aspect-ratio:4/5">' +
-      (fs.length > 1 ? '<div class="lb">Foto em destaque</div><div class="fotos">' + fs.map((f, i) => '<button type="button" class="ft" data-act="card-foto" data-v="' + i + '" aria-label="Foto ' + (i + 1) + '"><img src="' + f + '" alt="" style="' + ((d.fi || 0) === i ? 'outline:3px solid #c9a66b;outline-offset:2px' : 'opacity:.7') + '"></button>').join('') + '</div>' : '') +
+      '<img id="cardprev" alt="Prévia do card" style="width:100%;border-radius:16px;border:1px solid #e0d7ca;display:block;margin:8px 0 12px;background:#fbf8f2;min-height:200px">' +
+      (fs.length > 1 ? '<div class="lb">Fotos no card (toque para incluir ou tirar; a primeira escolhida fica maior)</div><div class="fotos">' + fs.map((f, i) => { const k = (d.usar || []).indexOf(i); return '<button type="button" class="ft" data-act="card-foto" data-v="' + i + '" aria-label="Foto ' + (i + 1) + '"><img src="' + f + '" alt="" style="' + (k >= 0 ? 'outline:3px solid #c9a66b;outline-offset:2px' : 'opacity:.45') + '">' + (k >= 0 ? '<span style="position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:12px;background:#3a3541;color:#e9d3a6;font:600 13px/24px sans-serif;text-align:center">' + (k + 1) + '</span>' : '') + '</button>'; }).join('') + '</div>' : '') +
       '<div class="lb">Valor no card</div><div class="chips wrap">' + chip('Mostrar valor', d.mostrar !== false, 'card-valor', '', '1') + chip('Sem valor', d.mostrar === false, 'card-valor', '', '0') + '</div>' +
-      inp('Texto curto (opcional)', 'texto', { area: true, ph: 'Ex.: Feita à mão em georgette, tamanho único' }) +
+      inp('Texto (opcional)', 'texto', { area: true, ph: 'Ex.: Feita à mão em georgette, tamanho único' }) +
       '<div class="barra"><button class="btn" data-act="card-share">Compartilhar / baixar card</button></div>');
   }
   function vAjustes() {
     const lista = S.ajustes.slice().sort((x, y) => (x.prazo || '9999').localeCompare(y.prazo || '9999'));
     const cor = s => s === 'Entregue' ? 'ok' : s === 'Pronto' ? 'gold' : 'lil';
-    return tela(topo('Mais', 'mais') + head('Ajustes de roupa', S.ajustes.length + (S.ajustes.length === 1 ? ' ajuste' : ' ajustes')) + '<div class="lista">' + (lista.length ? lista.map(a => { const r = calcAjuste(a); return '<button class="card" data-act="editar" data-v="ajustes:' + a.id + '"><div class="l1"><b>' + esc(nomeAj(a) || 'Sem nome') + '</b><b>' + money(r.total) + '</b></div><div class="l1"><span class="mut">' + esc(r.itens.map(i => i.d.split(' (')[0]).slice(0, 2).join(', ')) + (r.itens.length > 2 ? '…' : '') + (a.prazo ? ' · ' + fmtData(a.prazo) : '') + '</span><span class="pill ' + cor(a.status) + '">' + esc(a.status || 'Aguardando') + '</span></div></button>'; }).join('') : '<p class="vazio">Nenhum ajuste ainda. Toque em “Novo ajuste”.</p>') + '</div>' + fab('Novo ajuste', 'novo-ajustes'));
+    return tela(topo('Mais', 'mais') + head('Ajustes de roupa', S.ajustes.length + (S.ajustes.length === 1 ? ' ajuste' : ' ajustes')) + '<button class="btn sec" data-act="tabela-card" style="width:100%;flex:none;margin:4px 0 10px">Tabela de valores (card para compartilhar)</button>' + '<div class="lista">' + (lista.length ? lista.map(a => { const r = calcAjuste(a); return '<button class="card" data-act="editar" data-v="ajustes:' + a.id + '"><div class="l1"><b>' + esc(nomeAj(a) || 'Sem nome') + '</b><b>' + money(r.total) + '</b></div><div class="l1"><span class="mut">' + esc(r.itens.map(i => i.d.split(' (')[0]).slice(0, 2).join(', ')) + (r.itens.length > 2 ? '…' : '') + (a.prazo ? ' · ' + fmtData(a.prazo) : '') + '</span><span class="pill ' + cor(a.status) + '">' + esc(a.status || 'Aguardando') + '</span></div></button>'; }).join('') : '<p class="vazio">Nenhum ajuste ainda. Toque em “Novo ajuste”.</p>') + '</div>' + fab('Novo ajuste', 'novo-ajustes'));
   }
   function vFormAjuste() {
     const d = S.draft; const r = calcAjuste(d);
@@ -443,10 +494,11 @@ export function boot(store) {
     if (!S.cfg && !S.ready.cfg) { app.innerHTML = '<div class="login"><p class="sub">Abrindo…</p></div>'; return; }
     let h = '';
     if (S.draft) {
-      const m = { notapeca: vFormNotaPeca, cardpeca: vFormCardPeca, ajustes: vFormAjuste, pedidos: vFormPedido, agenda: vFormAgenda, clientes: vFormCliente, pecas: vFormPeca, insumos: vFormInsumo, vendas: vFormVenda, config: vConfig }; h = m[S.sub]();
+      const m = { tabcard: vFormTabela, notapeca: vFormNotaPeca, cardpeca: vFormCardPeca, ajustes: vFormAjuste, pedidos: vFormPedido, agenda: vFormAgenda, clientes: vFormCliente, pecas: vFormPeca, insumos: vFormInsumo, vendas: vFormVenda, config: vConfig }; h = m[S.sub]();
     } else h = ({ inicio: vInicio, pedidos: vPedidos, agenda: vAgenda, pecas: vPecas, ajustes: vAjustes, mais: vMais, clientes: vClientes, insumos: vInsumos, vendas: vVendas }[S.view] || vInicio)();
     const y = window.scrollY; app.innerHTML = h; if (S.keepScroll) window.scrollTo(0, y);
-    if (S.draft && S.sub === 'cardpeca') atualizarCard();
+    if (Date.now() < (S.toastAte || 0)) { const tz = $('#toast'); if (tz) { tz.textContent = S.toastTxt; tz.classList.add('on'); } }
+    if (S.draft && (S.sub === 'cardpeca' || S.sub === 'tabcard')) atualizarCard();
     const b = $('#busca'); if (b) b.addEventListener('input', e => { S.busca = e.target.value; const pos = e.target.selectionStart; render(); const nb = $('#busca'); nb.focus(); try { nb.setSelectionRange(pos, pos); } catch (x) { } });
   }
   function rerender(keep) { S.keepScroll = !!keep; render(); S.keepScroll = false; }
@@ -465,8 +517,15 @@ export function boot(store) {
     }[col];
     return Object.assign(base, extra || {});
   }
-  function abrir(col, d) { S.sub = col; S.draft = d; rerender(); window.scrollTo(0, 0); }
-  function fechar() { S.draft = null; S.sub = null; rerender(); }
+  function abrir(col, d) { if (S.draft && S.sub) (S.pilha = S.pilha || []).push({ sub: S.sub, draft: S.draft }); S.sub = col; S.draft = d; rerender(); window.scrollTo(0, 0); }
+  function fechar() { S.draft = null; S.sub = null; S.pilha = []; rerender(); }
+  const TOPO = ['inicio', 'pedidos', 'agenda', 'pecas', 'mais'];
+  function voltar() {
+    if ($('#modal')) { fecharModal(); return true; }
+    if (S.draft) { const p = (S.pilha || []).pop(); if (p) { S.sub = p.sub; S.draft = p.draft; rerender(); } else fechar(); window.scrollTo(0, 0); return true; }
+    if (S.view && S.view !== 'inicio') { S.view = (S.pilhaV || []).pop() || 'inicio'; rerender(); window.scrollTo(0, 0); return true; }
+    return false;
+  }
   function lerTudo() { document.querySelectorAll('[data-f]').forEach(el => { if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') setDraft(el); }); }
   function setDraft(el) {
     const v = el.type === 'checkbox' ? el.checked : el.value; const path = el.dataset.f;
@@ -481,7 +540,7 @@ export function boot(store) {
   // ---------- salvar por coleção ----------
   async function gravar(col) {
     lerTudo(); const d = clone(S.draft);
-    if (col === 'config') { ['hora', 'ind', 'margem', 'taxa', 'urg'].forEach(k => d[k] = num(d[k])); d.tab = (d.tab || []).filter(t => String(t.n || '').trim()); await store.save('config', 'main', d); S.cfg = d; toast('Configurações salvas'); fechar(); S.view = 'mais'; rerender(); return; }
+    if (col === 'config') { ['hora', 'ind', 'margem', 'taxa', 'urg'].forEach(k => d[k] = num(d[k])); d.tab = (d.tab || []).filter(t => String(t.n || '').trim()); await store.save('config', 'main', d); S.cfg = d; fechar(); S.view = 'mais'; rerender(); toast('✓ Configurações salvas'); return; }
     if (col === 'pedidos') { if (!d.titulo.trim()) return toast('Escreva o que vai fazer'); const antes = d.id ? S.pedidos.find(p => p.id === d.id) : null; const id = await salvar(col, d); if (d.status === 'Entregue' && (!antes || antes.status !== 'Entregue') && num(d.valor) > 0 && !S.vendas.some(v => v.pedidoId === id) && confirm('Registrar esta entrega como venda de ' + money(num(d.valor)) + '?')) await salvar('vendas', { descricao: d.titulo, clienteId: d.clienteId || '', data: iso(new Date()), valor: d.valor, custo: '', pedidoId: id }); }
     else if (col === 'agenda') { if (!d.titulo.trim()) return toast('Escreva o que fazer'); await salvar(col, d); S.dia = d.data || S.dia; S.semana = 0; }
     else if (col === 'clientes') { if (!d.nome.trim()) return toast('Escreva o nome'); await salvar(col, d); }
@@ -496,7 +555,7 @@ export function boot(store) {
       if (d.status === 'Entregue' && (!antes || antes.status !== 'Entregue') && cc.total > 0 && !S.vendas.some(v => v.ajusteId === id) && confirm('Registrar esta entrega como venda de ' + money(cc.total) + '?')) await salvar('vendas', { descricao: 'Ajuste de roupa', clienteId: d.clienteId || '', data: iso(new Date()), valor: cc.total, custo: Math.round(cc.custo * 100) / 100, ajusteId: id });
     }
     else if (col === 'vendas') { if (!d.descricao.trim()) return toast('Escreva o que foi vendido'); await salvar(col, d); }
-    toast('Salvo'); fechar();
+    fechar(); toast('✓ Salvo');
   }
 
   // ---------- backup ----------
@@ -538,13 +597,19 @@ export function boot(store) {
     for (const f of Array.from(files)) { if ((S.draft.fotos || []).length >= 4) break; try { (S.draft.fotos = S.draft.fotos || []).push(await lerFoto(f)); } catch (e) { toast('Não consegui abrir essa foto'); } }
     rerender(true);
   }
+  try { history.replaceState({ a: 0 }, ''); history.pushState({ a: 1 }, ''); } catch (e) { }
+  window.addEventListener('popstate', () => {
+    if (voltar()) { try { history.pushState({ a: 1 }, ''); } catch (e) { } return; }
+    if (S.sairArm) { S.sairArm = false; history.back(); return; }
+    S.sairArm = true; toast('Toque em voltar de novo para sair'); try { history.pushState({ a: 1 }, ''); } catch (e) { } setTimeout(() => { S.sairArm = false; }, 2500);
+  });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act]'); if (!b) return; const a = b.dataset.act, v = b.dataset.v;
     const fa = {
       entrar: async () => { try { S.msg = ''; await store.signIn(); } catch (x) { S.msg = 'Não consegui entrar. Tente de novo.'; const el = $('#err'); if (el) el.textContent = S.msg; } },
       sair: () => store.signOut(),
-      ir: () => { S.draft = null; S.sub = null; S.view = v; window.scrollTo(0, 0); if (v === 'config') { abrir('config', novoRascunho('config')); return; } rerender(); },
-      fechar: () => fechar(),
+      ir: () => { if (!TOPO.includes(v) && S.view !== v) (S.pilhaV = S.pilhaV || []).push(S.view); else if (TOPO.includes(v)) S.pilhaV = []; S.draft = null; S.sub = null; S.pilha = []; S.view = v; window.scrollTo(0, 0); if (v === 'config') { abrir('config', novoRascunho('config')); return; } rerender(); },
+      fechar: () => voltar(),
       filtro: () => { S.filtro = v; rerender(); },
       dia: () => { S.dia = v; S.semana = 0; rerender(true); },
       semana: () => { const d = parseIso(S.dia); d.setDate(d.getDate() + 7 * +v); S.dia = iso(d); S.semana = 0; rerender(true); },
@@ -552,7 +617,7 @@ export function boot(store) {
       set: () => { lerTudo(); setP(S.draft, b.dataset.f, v); rerender(true); },
       editar: () => { const p = v.split(':'); const o = S[p[0]].find(x => x.id === p[1]); if (o) { const d = clone(o); if (p[0] === 'pecas') { d.fotos = d.fotos || []; d.mats = d.mats || []; d.maq = d.maq || {}; } if (p[0] === 'clientes') d.med = d.med || {}; abrir(p[0], d); } },
       excluir: () => { if (confirm('Excluir de vez? Não dá para desfazer.')) guard(async () => { await store.remove(v, S.draft.id); toast('Excluído'); fechar(); })(); },
-      salvar: () => guard(gravar)(v),
+      salvar: () => { if (S.salvando) return; S.salvando = true; b.disabled = true; guard(gravar)(v).finally(() => { S.salvando = false; b.disabled = false; }); },
       feito: () => { const t = S.agenda.find(x => x.id === v); if (t) guard(salvar)('agenda', Object.assign({}, t, { feito: !t.feito })); },
       'mat-add': () => { lerTudo(); S.draft.mats.push({ nome: '', un: '', precoUn: '', uso: '' }); rerender(true); },
       'mat-del': () => { lerTudo(); S.draft.mats.splice(+v, 1); rerender(true); },
@@ -572,8 +637,10 @@ export function boot(store) {
       'aj-pick': () => { const t = cfg().tab[+v]; lerTudo(); S.draft.servs.push(t ? { nome: t.n, det: '', min: String(t.m), qtd: '1', vu: String(t.v), mat: '' } : { nome: '', det: '', min: '', qtd: '1', vu: '', mat: '' }); fecharModal(); rerender(true); },
       'aj-del': () => { lerTudo(); S.draft.servs.splice(+v, 1); rerender(true); },
       'aj-copiar': () => { lerTudo(); const t = notaTexto(S.draft); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => toast('Texto copiado'), () => toast('Não consegui copiar')); },
-      'card-peca': () => { lerTudo(); const d = S.draft, r = calcPeca(d), pr = String(d.preco).trim() === '' ? r.sug : numRaw(d.preco); abrir('cardpeca', { pecaId: d.id, nome: d.nome, colecao: d.colecao, texto: d.texto || '', fotos: (d.fotos || []).slice(), fi: 0, preco: pr, mostrar: true }); },
-      'card-foto': () => { S.draft.fi = +v; rerender(true); },
+      'card-peca': () => { lerTudo(); const d = S.draft, r = calcPeca(d), pr = String(d.preco).trim() === '' ? r.sug : numRaw(d.preco); abrir('cardpeca', { pecaId: d.id, nome: d.nome, colecao: d.colecao, texto: d.texto || '', fotos: (d.fotos || []).slice(), usar: (d.fotos || []).map((f, i) => i).slice(0, 4), preco: pr, mostrar: true }); },
+      'card-foto': () => { lerTudo(); const u = S.draft.usar || [], i = +v, k = u.indexOf(i); if (k >= 0) { if (u.length > 1) u.splice(k, 1); } else if (u.length < 4) u.push(i); S.draft.usar = u; rerender(true); },
+      'tabela-card': () => abrir('tabcard', {}),
+      'tabela-share': () => guard(tabelaFoto)(),
       'card-valor': () => { lerTudo(); S.draft.mostrar = v === '1'; rerender(true); },
       'card-share': () => { lerTudo(); guard(cardFoto)(S.draft); },
       'aj-foto': () => { lerTudo(); guard(notaFoto)(S.draft); },
@@ -611,5 +678,5 @@ export function boot(store) {
     render();
   });
   render();
-  return { S, calcPeca, avisosPreco, importar, render, desenharNota, desenharCard, calcAjuste };
+  return { S, calcPeca, avisosPreco, importar, render, desenharNota, desenharCard, desenharTabela, calcAjuste };
 }
