@@ -140,9 +140,21 @@ export function boot(store) {
       .concat(S.ajustes.filter(x => x.status !== 'Entregue').map(x => ({ k: 'ajustes:' + x.id, t: 'Ajuste de roupa', c: nomeAj(x) || '', d: x.prazo || '' })))
       .sort((x, y) => (x.d || '9999').localeCompare(y.d || '9999')).slice(0, 3);
     const lin = (k, t, m) => '<button class="card" data-act="editar" data-v="' + k + '"><div class="l1"><b>' + esc(t) + '</b><span class="mut">' + esc(m) + '</span></div></button>';
+    // vitrine
+    const vit = S.pecas.filter(p => (p.fotos || [])[0]).sort((x, y) => (y.atualizado || 0) - (x.atualizado || 0)).slice(0, 10);
+    const vitr = vit.length ? '<div class="sec2 rel">Suas peças</div><div class="vit rel">' + vit.map(p => '<button class="vc" data-act="editar" data-v="pecas:' + p.id + '"><img src="' + p.fotos[0] + '" alt="" loading="lazy"><b>' + esc(p.nome) + '</b><span>' + (Number(p.preco) > 0 ? money(Number(p.preco)) : '') + '</span></button>').join('') + '</div>'
+      : '<button class="aviso rel" data-act="ir" data-v="pecas">' + svg('pecas', 18, '#7A5FA0') + '<span>Cadastre uma peça com foto para ela aparecer aqui</span></button>';
+    // números do mês
+    const ym = hj.slice(0, 7), mesTot = ym2 => S.vendas.filter(v => String(v.data || '').slice(0, 7) === ym2).reduce((t, v) => t + num(v.valor), 0);
+    const meses = []; for (let i = 5; i >= 0; i--) { const dd = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1); const k = dd.getFullYear() + '-' + String(dd.getMonth() + 1).padStart(2, '0'); meses.push({ k, n: MESES[dd.getMonth()].slice(0, 3), v: mesTot(k) }); }
+    const mx = Math.max.apply(null, meses.map(m => m.v).concat([1])), vm = S.vendas.filter(v => String(v.data || '').slice(0, 7) === ym);
+    const num3 = (n, l) => '<div class="nm"><b>' + n + '</b><small>' + l + '</small></div>';
+    const nums = '<div class="sec2 rel">' + MESES[hoje.getMonth()][0].toUpperCase() + MESES[hoje.getMonth()].slice(1) + ' em números</div><div class="nums rel"><div class="nm1"><small>Vendido no mês</small><b>' + money(mesTot(ym)) + '</b></div><div class="nm3">' + num3(vm.length, vm.length === 1 ? 'venda' : 'vendas') + num3(S.pecas.length, 'peças no catálogo') + num3(S.vendas.filter(v => v.ajusteId && String(v.data || '').slice(0, 7) === ym).length, 'ajustes entregues') + '</div>' +
+      '<div class="bars">' + meses.map(m => '<div class="br"><i style="height:' + Math.max(4, Math.round(m.v / mx * 100)) + '%"' + (m.k === ym ? ' class="on"' : '') + '></i><small>' + m.n + '</small></div>').join('') + '</div></div>';
     return tela('<img class="marca" src="marca.png" alt="" aria-hidden="true"><div class="hd rel"><span class="sub">' + esc(dt) + '</span><span class="tit big">Olá, Keila</span></div><div class="frase rel">De rascunhos no caderno à linha na agulha</div>' +
-      '<div class="sec2 rel">Hoje na agenda</div><div class="lista rel">' + (ag.length ? ag.map(x => lin('agenda:' + x.id, x.titulo, x.hora ? x.hora.slice(0, 5) : '')).join('') : '<p class="vazio">Nada marcado para hoje.</p>') + '</div>' +
-      '<div class="sec2 rel">Próximas entregas</div><div class="lista rel">' + (ent.length ? ent.map(x => lin(x.k, x.t + (x.c ? ' · ' + x.c : ''), x.d ? fmtData(x.d) : 'sem prazo')).join('') : '<p class="vazio">Nenhuma entrega pendente.</p>') + '</div>' +
+      vitr + nums +
+      (ag.length ? '<div class="sec2 rel">Hoje na agenda</div><div class="lista rel">' + ag.map(x => lin('agenda:' + x.id, x.titulo, x.hora ? x.hora.slice(0, 5) : '')).join('') + '</div>' : '') +
+      (ent.some(x => x.d) ? '<div class="sec2 rel">Próximas entregas</div><div class="lista rel">' + ent.filter(x => x.d).map(x => lin(x.k, x.t + (x.c ? ' · ' + x.c : ''), fmtData(x.d))).join('') + '</div>' : '') +
       (av ? '<button class="aviso rel" data-act="ir" data-v="insumos">' + svg('alerta', 18, '#8C6B2E') + '<span>' + av + (av > 1 ? ' preços desatualizados' : ' preço desatualizado') + '</span></button>' : '') +
       '<div class="sec2 rel">Atalhos</div><div class="grid rel">' + t('clientes', 'Clientes', 'Medidas e fichas') + t('ajustes', 'Ajustes', 'Barras e consertos') + t('insumos', 'Insumos', 'Compras e preços') + t('vendas', 'Vendas', 'Números do mês') + '</div>');
   }
